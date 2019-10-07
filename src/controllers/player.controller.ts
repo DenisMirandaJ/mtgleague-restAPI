@@ -17,20 +17,45 @@ import {
   del,
   requestBody,
 } from '@loopback/rest';
-import {Player} from '../models';
-import {PlayerRepository} from '../repositories';
+import { Player } from '../models';
+import { PlayerRepository } from '../repositories';
+import { main } from '..';
 
 export class PlayerController {
   constructor(
     @repository(PlayerRepository)
-    public playerRepository : PlayerRepository,
-  ) {}
+    public playerRepository: PlayerRepository,
+  ) { }
+
+
+  getExpandedCardList(player: any): String[] {
+    let maindeck = player.maindeck.data
+    let sideboard = player.sideboard.data
+    let cards = maindeck.concat(sideboard)
+    console.log(player.maindeck)
+    let totalCards: String[] = []
+    cards.forEach((item: { cardJSON: any; quantity: number; }) => {
+      for (let i = 0; i < item.quantity; i++) {
+        totalCards.push(String(item['cardJSON']['name']))
+      }
+    });
+
+    return totalCards
+  }
+
+  checkEditValidity(playerOld: any, playerNew: any): Boolean {
+    let expandedPlayerOld = this.getExpandedCardList(playerOld)
+    let expandedPlayerNew = this.getExpandedCardList(playerNew)
+    console.log(expandedPlayerOld)
+    let diff = expandedPlayerOld.filter(x => !expandedPlayerNew.includes(x));
+    return diff.length <= 6
+  }
 
   @post('/players', {
     responses: {
       '200': {
         description: 'Player model instance',
-        content: {'application/json': {schema: getModelSchemaRef(Player)}},
+        content: { 'application/json': { schema: getModelSchemaRef(Player) } },
       },
     },
   })
@@ -38,25 +63,74 @@ export class PlayerController {
     @requestBody({
       content: {
         'application/json': {
-          schema: getModelSchemaRef(Player, {exclude: ['id']}),
+          schema: getModelSchemaRef(Player, { exclude: ['id'] }),
         },
       },
     })
     player: Omit<Player, 'id'>,
   ): Promise<Player> {
+    let p = await this.playerRepository.find({
+      where: { playername: player.playername },
+      limit: 1,
+    });
+    //If player Name already exist
+    if (p.length > 0) {
+      let password = p[0].password
+      if (password === player.password) {
+        if (!this.checkEditValidity(player, p[0])) {
+          throw {
+            code: 400,
+            message: "You can't edit more than 6 cards at a time, contact the admins for clarification on the league's rules",
+            name: "InvalidEditError"
+          }
+        }
+        this.playerRepository.updateById(p[0].id, player)
+        return p[0]
+      } else {
+        throw {
+          code: 400,
+          message: "Player name already exist",
+          name: "UserAlreadyExistError"
+        }
+      }
+    }
     return this.playerRepository.create(player);
+  }
+
+  @get('/players/names', {
+    responses: {
+      '200': {
+        description: 'Array of Player model instances',
+        content: {
+          'application/json': {
+            schema: getModelSchemaRef(Player, { exclude: ['id', "deckname", "maindeck", "password", "sideboard", "proxyes"] }),
+          },
+        },
+      },
+    },
+  })
+  async findNames(
+    @param.query.object('filter', getFilterSchemaFor(Player))
+    filter?: Filter<Player>,
+  ): Promise<Object> {
+    let p = await this.playerRepository.find(filter);
+    let names = p.map(item => {
+      return { name: item.playername }
+    })
+    return names
   }
 
   @get('/players/count', {
     responses: {
       '200': {
         description: 'Player model count',
-        content: {'application/json': {schema: CountSchema}},
+        content: { 'application/json': { schema: CountSchema } },
       },
     },
   })
   async count(
-    @param.query.object('where', getWhereSchemaFor(Player)) where?: Where<Player>,
+    @param.query.object('where', getWhereSchemaFor(Player))
+    where?: Where<Player>,
   ): Promise<Count> {
     return this.playerRepository.count(where);
   }
@@ -67,14 +141,15 @@ export class PlayerController {
         description: 'Array of Player model instances',
         content: {
           'application/json': {
-            schema: {type: 'array', items: getModelSchemaRef(Player)},
+            schema: { type: 'array', items: getModelSchemaRef(Player) },
           },
         },
       },
     },
   })
   async find(
-    @param.query.object('filter', getFilterSchemaFor(Player)) filter?: Filter<Player>,
+    @param.query.object('filter', getFilterSchemaFor(Player))
+    filter?: Filter<Player>,
   ): Promise<Player[]> {
     return this.playerRepository.find(filter);
   }
@@ -83,7 +158,7 @@ export class PlayerController {
     responses: {
       '200': {
         description: 'Player PATCH success count',
-        content: {'application/json': {schema: CountSchema}},
+        content: { 'application/json': { schema: CountSchema } },
       },
     },
   })
@@ -91,12 +166,13 @@ export class PlayerController {
     @requestBody({
       content: {
         'application/json': {
-          schema: getModelSchemaRef(Player, {partial: true}),
+          schema: getModelSchemaRef(Player, { partial: true }),
         },
       },
     })
     player: Player,
-    @param.query.object('where', getWhereSchemaFor(Player)) where?: Where<Player>,
+    @param.query.object('where', getWhereSchemaFor(Player))
+    where?: Where<Player>,
   ): Promise<Count> {
     return this.playerRepository.updateAll(player, where);
   }
@@ -105,7 +181,7 @@ export class PlayerController {
     responses: {
       '200': {
         description: 'Player model instance',
-        content: {'application/json': {schema: getModelSchemaRef(Player)}},
+        content: { 'application/json': { schema: getModelSchemaRef(Player) } },
       },
     },
   })
@@ -125,7 +201,7 @@ export class PlayerController {
     @requestBody({
       content: {
         'application/json': {
-          schema: getModelSchemaRef(Player, {partial: true}),
+          schema: getModelSchemaRef(Player, { partial: true }),
         },
       },
     })
